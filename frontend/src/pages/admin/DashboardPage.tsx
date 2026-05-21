@@ -8,6 +8,8 @@ type Stats = {
   totalKeys: number;
 };
 
+// Starting function
+
 export function Dashboard() {
   const [stats, setStats] = useState<Stats>({ liveCount: 0, totalKeys: 0 });
   const token = localStorage.getItem('token');
