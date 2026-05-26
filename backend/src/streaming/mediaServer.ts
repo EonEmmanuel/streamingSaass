@@ -1,13 +1,14 @@
-import NodeMediaServer from 'node-media-server';
-import fs from 'fs';
-import path from 'path';
-import { env } from '../config/env.js';
-import { prisma } from '../config/prisma.js';
-import { getOrCreateStreamRecord } from '../services/streamService.js';
+import NodeMediaServer from "node-media-server";
+import fs from "fs";
+import path from "path";
+import { env } from "../config/env.js";
+import { prisma } from "../config/prisma.js";
+import { getOrCreateStreamRecord } from "../services/streamService.js";
+import { startSRTIngest, startSRTPlayback, stopSRTProcesses } from "../server.js";
 
 const getStreamKeyFromPath = (streamPath: string): string => {
-  const parts = streamPath.split('/').filter(Boolean);
-  return parts[1] ?? '';
+  const parts = streamPath.split("/").filter(Boolean);
+  return parts[1] ?? "";
 };
 
 export const createMediaServer = (): NodeMediaServer => {
@@ -18,58 +19,67 @@ export const createMediaServer = (): NodeMediaServer => {
       chunk_size: 60000,
       gop_cache: true,
       ping: 30,
-      ping_timeout: 60
+      ping_timeout: 60,
     },
     http: {
       port: env.HLS_PORT,
-      mediaroot: './media',
-      allow_origin: '*'
+      mediaroot: "./media",
+      allow_origin: "*",
     },
     trans: {
       ffmpeg: env.FFMPEG_PATH,
       tasks: [
         {
-          app: 'live',
+          app: "live",
           hls: true,
-          hlsFlags: '[hls_time=2:hls_list_size=5:hls_flags=delete_segments]'
-        }
-      ]
-    }
+          hlsFlags: "[hls_time=4:hls_list_size=5:hls_flags=delete_segments]",
+        },
+      ],
+    },
   };
 
   const nms = new NodeMediaServer(config);
 
-  nms.on('prePublish', async (id: string, streamPath: string) => {
+  nms.on("prePublish", async (id: string, streamPath: string) => {
     const streamKey = getStreamKeyFromPath(streamPath);
     const session = nms.getSession(id);
 
-    const key = await prisma.streamKey.findUnique({ where: { key: streamKey } });
+    const key = await prisma.streamKey.findUnique({
+      where: { key: streamKey },
+    });
     if (!key || !key.isActive) {
       session.reject();
       return;
     }
+
+    // Start SRT playback so vMix 2 can pull the stream via SRT
+    startSRTPlayback(streamKey);
   });
 
-  nms.on('postPublish', async (_id: string, streamPath: string) => {
+  nms.on("postPublish", async (_id: string, streamPath: string) => {
     const streamKey = getStreamKeyFromPath(streamPath);
-    const key = await prisma.streamKey.findUnique({ where: { key: streamKey } });
+    const key = await prisma.streamKey.findUnique({
+      where: { key: streamKey },
+    });
     if (!key) return;
 
     const record = await getOrCreateStreamRecord(key.id);
     await prisma.stream.update({
       where: { id: record.id },
-      data: { isLive: true, startedAt: new Date(), endedAt: null }
+      data: { isLive: true, startedAt: new Date(), endedAt: null },
     });
   });
 
-  nms.on('donePublish', async (_id: string, streamPath: string) => {
+  nms.on("donePublish", async (_id: string, streamPath: string) => {
     const streamKey = getStreamKeyFromPath(streamPath);
-    
+
+    // Stop SRT processes for this stream
+    stopSRTProcesses(streamKey);
+
     // Cleanup HLS files
-    const streamDir = path.join(process.cwd(), 'media', 'live', streamKey);
+    const streamDir = path.join(process.cwd(), "media", "live", streamKey);
     if (fs.existsSync(streamDir)) {
       try {
-        // Wait a bit to ensure files are no longer in use
         setTimeout(() => {
           fs.rmSync(streamDir, { recursive: true, force: true });
           console.log(`Cleaned up HLS directory for: ${streamKey}`);
@@ -79,19 +89,21 @@ export const createMediaServer = (): NodeMediaServer => {
       }
     }
 
-    const key = await prisma.streamKey.findUnique({ where: { key: streamKey } });
+    const key = await prisma.streamKey.findUnique({
+      where: { key: streamKey },
+    });
     if (!key) return;
 
     const latest = await prisma.stream.findFirst({
       where: { streamKeyId: key.id },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: "desc" },
     });
 
     if (!latest) return;
 
     await prisma.stream.update({
       where: { id: latest.id },
-      data: { isLive: false, endedAt: new Date() }
+      data: { isLive: false, endedAt: new Date() },
     });
   });
 
