@@ -10,6 +10,8 @@ type StreamKeyItem = {
   name: string;
   isActive: boolean;
   rtmpUrl: string;
+  srtUrl: string;
+  srtPlaybackUrl: string;
 };
 
 export const StreamsPage = () => {
@@ -103,14 +105,34 @@ export const StreamsPage = () => {
                   </span>
                 </div>
                 <Button 
-                  onClick={() => onCopy(item.id, item.rtmpUrl)} 
+                  onClick={() => onCopy(item.id + '-rtmp', item.rtmpUrl)} 
                   className={cn(
                     "flex items-center gap-2 bg-vimeo-lightGray text-black hover:bg-vimeo-border border border-vimeo-border shadow-none transition-all duration-200",
-                    copiedId === item.id && "bg-emerald-50 border-emerald-200 text-emerald-600"
+                    copiedId === item.id + '-rtmp' && "bg-emerald-50 border-emerald-200 text-emerald-600"
                   )}
                 >
-                  {copiedId === item.id ? <Check size={14} /> : <Copy size={14} />}
-                  <span className="text-xs">{copiedId === item.id ? 'Copied!' : 'Copy RTMP'}</span>
+                  {copiedId === item.id + '-rtmp' ? <Check size={14} /> : <Copy size={14} />}
+                  <span className="text-xs">{copiedId === item.id + '-rtmp' ? 'Copied RTMP!' : 'Copy RTMP'}</span>
+                </Button>
+                <Button 
+                  onClick={() => onCopy(item.id + '-srt', item.srtUrl)} 
+                  className={cn(
+                    "flex items-center gap-2 bg-vimeo-lightGray text-black hover:bg-vimeo-border border border-vimeo-border shadow-none transition-all duration-200",
+                    copiedId === item.id + '-srt' && "bg-emerald-50 border-emerald-200 text-emerald-600"
+                  )}
+                >
+                  {copiedId === item.id + '-srt' ? <Check size={14} /> : <Copy size={14} />}
+                  <span className="text-xs">{copiedId === item.id + '-srt' ? 'Copied SRT Ingest!' : 'Copy SRT Ingest'}</span>
+                </Button>
+                <Button 
+                  onClick={() => onCopy(item.id + '-srt-play', item.srtPlaybackUrl)} 
+                  className={cn(
+                    "flex items-center gap-2 bg-vimeo-lightGray text-black hover:bg-vimeo-border border border-vimeo-border shadow-none transition-all duration-200",
+                    copiedId === item.id + '-srt-play' && "bg-emerald-50 border-emerald-200 text-emerald-600"
+                  )}
+                >
+                  {copiedId === item.id + '-srt-play' ? <Check size={14} /> : <Copy size={14} />}
+                  <span className="text-xs">{copiedId === item.id + '-srt-play' ? 'Copied SRT Playback!' : 'Copy SRT Playback'}</span>
                 </Button>
                 <button 
                   onClick={() => onDelete(item.id)}
