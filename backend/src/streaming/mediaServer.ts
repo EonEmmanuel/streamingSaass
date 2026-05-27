@@ -1,111 +1,170 @@
-import NodeMediaServer from "node-media-server";
-import fs from "fs";
-import path from "path";
-import { env } from "../config/env.js";
-import { prisma } from "../config/prisma.js";
-import { getOrCreateStreamRecord } from "../services/streamService.js";
-import { startSRTIngest, startSRTPlayback, stopSRTProcesses } from "../server.js";
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import { spawn } from 'child_process';
+import { Request, Response } from 'express';
+import { env } from '../config/env.js';
+import { prisma } from '../config/prisma.js';
+import { getOrCreateStreamRecord } from '../services/streamService.js';
 
-const getStreamKeyFromPath = (streamPath: string): string => {
-  const parts = streamPath.split("/").filter(Boolean);
-  return parts[1] ?? "";
+// Per-stream reconnect rate limiting: timestamps of recent connect attempts
+const reconnectTimestamps = new Map<string, number[]>();
+
+// Active thumbnail snapshot jobs per stream key
+const thumbnailJobs = new Map<string, NodeJS.Timeout>();
+
+const checkReconnectLimit = (streamKey: string): boolean => {
+  const now = Date.now();
+  const window = 60_000;
+  const timestamps = (reconnectTimestamps.get(streamKey) ?? []).filter(t => now - t < window);
+  timestamps.push(now);
+  reconnectTimestamps.set(streamKey, timestamps);
+  return timestamps.length <= env.MAX_RECONNECTS_PER_MINUTE;
 };
 
-export const createMediaServer = (): NodeMediaServer => {
-  const config = {
-    logType: 2,
-    rtmp: {
-      port: env.RTMP_PORT,
-      chunk_size: 60000,
-      gop_cache: true,
-      ping: 30,
-      ping_timeout: 60,
-    },
-    http: {
-      port: env.HLS_PORT,
-      mediaroot: "./media",
-      allow_origin: "*",
-    },
-    trans: {
-      ffmpeg: env.FFMPEG_PATH,
-      tasks: [
-        {
-          app: "live",
-          hls: true,
-          hlsFlags: "[hls_time=4:hls_list_size=5:hls_flags=delete_segments]",
-        },
-      ],
-    },
+const startThumbnailJob = (streamKey: string): void => {
+  if (thumbnailJobs.has(streamKey)) return;
+
+  const hlsUrl = `http://localhost:${env.HLS_PORT}/live/${streamKey}/index.m3u8`;
+  const outDir = path.join(process.cwd(), 'media', 'thumbnails', streamKey);
+  fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(outDir, 'latest.jpg');
+
+  const capture = () => {
+    const ff = spawn(env.FFMPEG_PATH, [
+      '-i', hlsUrl,
+      '-vframes', '1',
+      '-q:v', '2',
+      '-y', outPath,
+    ], { stdio: 'ignore' });
+    ff.on('error', err => console.error(`Thumbnail capture error [${streamKey}]:`, err));
   };
 
-  const nms = new NodeMediaServer(config);
-
-  nms.on("prePublish", async (id: string, streamPath: string) => {
-    const streamKey = getStreamKeyFromPath(streamPath);
-    const session = nms.getSession(id);
-
-    const key = await prisma.streamKey.findUnique({
-      where: { key: streamKey },
-    });
-    if (!key || !key.isActive) {
-      session.reject();
-      return;
-    }
-
-    // Start SRT playback so vMix 2 can pull the stream via SRT
-    startSRTPlayback(streamKey);
-  });
-
-  nms.on("postPublish", async (_id: string, streamPath: string) => {
-    const streamKey = getStreamKeyFromPath(streamPath);
-    const key = await prisma.streamKey.findUnique({
-      where: { key: streamKey },
-    });
-    if (!key) return;
-
-    const record = await getOrCreateStreamRecord(key.id);
-    await prisma.stream.update({
-      where: { id: record.id },
-      data: { isLive: true, startedAt: new Date(), endedAt: null },
-    });
-  });
-
-  nms.on("donePublish", async (_id: string, streamPath: string) => {
-    const streamKey = getStreamKeyFromPath(streamPath);
-
-    // Stop SRT processes for this stream
-    stopSRTProcesses(streamKey);
-
-    // Cleanup HLS files
-    const streamDir = path.join(process.cwd(), "media", "live", streamKey);
-    if (fs.existsSync(streamDir)) {
-      try {
-        setTimeout(() => {
-          fs.rmSync(streamDir, { recursive: true, force: true });
-          console.log(`Cleaned up HLS directory for: ${streamKey}`);
-        }, 5000);
-      } catch (err) {
-        console.error(`Failed to cleanup HLS directory for ${streamKey}:`, err);
-      }
-    }
-
-    const key = await prisma.streamKey.findUnique({
-      where: { key: streamKey },
-    });
-    if (!key) return;
-
-    const latest = await prisma.stream.findFirst({
-      where: { streamKeyId: key.id },
-      orderBy: { createdAt: "desc" },
-    });
-
-    if (!latest) return;
-
-    await prisma.stream.update({
-      where: { id: latest.id },
-      data: { isLive: false, endedAt: new Date() },
-    });
-  });
-
-  return nms;
+  capture();
+  const timer = setInterval(capture, env.THUMBNAIL_INTERVAL_MS);
+  thumbnailJobs.set(streamKey, timer);
 };
+
+const stopThumbnailJob = (streamKey: string): void => {
+  const timer = thumbnailJobs.get(streamKey);
+  if (timer) {
+    clearInterval(timer);
+    thumbnailJobs.delete(streamKey);
+  }
+};
+
+export const verifyHmacSignature = (req: Request, res: Response, next: () => void): void => {
+  const signature = req.headers['x-srs-signature'] as string | undefined;
+  if (!signature) {
+    res.status(401).json({ code: 1, error: 'Missing signature' });
+    return;
+  }
+
+  const body = JSON.stringify(req.body);
+  const expected = crypto
+    .createHmac('sha256', env.SRS_HOOK_SECRET)
+    .update(body)
+    .digest('hex');
+
+  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+    res.status(401).json({ code: 1, error: 'Invalid signature' });
+    return;
+  }
+
+  next();
+};
+
+export class SrsHookHandler {
+  private readonly startSRTPlayback: (streamKey: string) => void;
+  private readonly stopSRTProcesses: (streamKey: string) => void;
+
+  constructor(
+    startSRTPlayback: (streamKey: string) => void,
+    stopSRTProcesses: (streamKey: string) => void,
+  ) {
+    this.startSRTPlayback = startSRTPlayback;
+    this.stopSRTProcesses = stopSRTProcesses;
+  }
+
+  async onPublish(req: Request, res: Response): Promise<void> {
+    const { stream } = req.body as { stream: string; app: string; tcUrl: string };
+    const streamKey = stream;
+
+    try {
+      if (!checkReconnectLimit(streamKey)) {
+        console.warn(`on_publish: rate limit exceeded for [${streamKey}]`);
+        res.json({ code: 1, error: 'Rate limit exceeded' });
+        return;
+      }
+
+      const key = await prisma.streamKey.findUnique({ where: { key: streamKey } });
+      if (!key || !key.isActive) {
+        console.warn(`on_publish: rejected unknown/inactive key [${streamKey}]`);
+        res.json({ code: 1, error: 'Unauthorized stream key' });
+        return;
+      }
+
+      this.startSRTPlayback(streamKey);
+      startThumbnailJob(streamKey);
+
+      const record = await getOrCreateStreamRecord(key.id);
+      await prisma.stream.update({
+        where: { id: record.id },
+        data: { isLive: true, startedAt: new Date(), endedAt: null },
+      });
+
+      console.log(`on_publish: stream started [${streamKey}]`);
+      res.json({ code: 0 });
+    } catch (err) {
+      console.error(`on_publish error [${streamKey}]:`, err);
+      res.json({ code: 1, error: 'Internal error' });
+    }
+  }
+
+  async onUnpublish(req: Request, res: Response): Promise<void> {
+    const { stream } = req.body as { stream: string };
+    const streamKey = stream;
+
+    try {
+      this.stopSRTProcesses(streamKey);
+      stopThumbnailJob(streamKey);
+
+      const streamDir = path.join(process.cwd(), 'media', 'live', streamKey);
+      if (fs.existsSync(streamDir)) {
+        setTimeout(() => {
+          try {
+            fs.rmSync(streamDir, { recursive: true, force: true });
+            console.log(`Cleaned up HLS directory for: ${streamKey}`);
+          } catch (err) {
+            console.error(`Failed to cleanup HLS directory for ${streamKey}:`, err);
+          }
+        }, 5000);
+      }
+
+      const key = await prisma.streamKey.findUnique({ where: { key: streamKey } });
+      if (key) {
+        const latest = await prisma.stream.findFirst({
+          where: { streamKeyId: key.id },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (latest) {
+          await prisma.stream.update({
+            where: { id: latest.id },
+            data: { isLive: false, endedAt: new Date() },
+          });
+        }
+      }
+
+      console.log(`on_unpublish: stream ended [${streamKey}]`);
+      res.json({ code: 0 });
+    } catch (err) {
+      console.error(`on_unpublish error [${streamKey}]:`, err);
+      res.json({ code: 1, error: 'Internal error' });
+    }
+  }
+
+  async onHls(req: Request, res: Response): Promise<void> {
+    // SRS notifies on each HLS segment write; acknowledge without action
+    res.json({ code: 0 });
+  }
+}

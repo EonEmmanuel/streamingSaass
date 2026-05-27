@@ -12,7 +12,17 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(16),
   FFMPEG_PATH: z.string().min(1),
-  BASE_DOMAIN: z.string().default('localhost')
+  BASE_DOMAIN: z.string().default('localhost'),
+  SRS_HTTP_API_URL: z.string().url().default('http://localhost:1985'),
+  SRS_HOOK_SECRET: z.string().min(1),
+  MAX_RECONNECTS_PER_MINUTE: z.coerce.number().default(5),
+  STREAM_WATCHDOG_INTERVAL_MS: z.coerce.number().default(10000),
+  METRICS_COLLECTION_INTERVAL_MS: z.coerce.number().default(30000),
+  THUMBNAIL_INTERVAL_MS: z.coerce.number().default(30000),
+  MAX_BITRATE_KBPS: z.coerce.number().default(8000),
+  MIN_BITRATE_WARNING_KBPS: z.coerce.number().default(500),
+  MIN_DISK_GB: z.coerce.number().default(2),
+  SRT_PLAYBACK_BASE_PORT: z.coerce.number().default(9001),
 });
 
 const parsed = envSchema.safeParse(process.env);

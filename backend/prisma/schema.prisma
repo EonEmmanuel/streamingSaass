@@ -22,26 +22,27 @@ model User {
 }
 
 model StreamKey {
-  id        String    @id @default(uuid())
-  key       String    @unique
+  id        String   @id @default(uuid())
+  key       String   @unique
   name      String
-  isActive  Boolean   @default(true)
+  isActive  Boolean  @default(true)
   userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   streams   Stream[]
   domain    Domain?
-  createdAt DateTime  @default(now())
+  createdAt DateTime @default(now())
 }
 
 model Stream {
-  id          String    @id @default(uuid())
+  id          String          @id @default(uuid())
   streamKeyId String
-  streamKey   StreamKey @relation(fields: [streamKeyId], references: [id], onDelete: Cascade)
-  isLive      Boolean   @default(false)
-  viewerCount Int       @default(0)
+  streamKey   StreamKey       @relation(fields: [streamKeyId], references: [id], onDelete: Cascade)
+  isLive      Boolean         @default(false)
+  viewerCount Int             @default(0)
   startedAt   DateTime?
   endedAt     DateTime?
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime        @default(now())
+  metrics     StreamMetrics[]
 }
 
 model Domain {
@@ -49,4 +50,15 @@ model Domain {
   domain      String    @unique
   streamKeyId String    @unique
   streamKey   StreamKey @relation(fields: [streamKeyId], references: [id], onDelete: Cascade)
+}
+
+model StreamMetrics {
+  id        String   @id @default(cuid())
+  streamId  String
+  stream    Stream   @relation(fields: [streamId], references: [id])
+  timestamp DateTime @default(now())
+  bitrate   Int
+  fps       Float
+  viewers   Int
+  uptime    Int
 }

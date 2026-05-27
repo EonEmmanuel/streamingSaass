@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { prisma } from '../config/prisma.js';
 import { env } from '../config/env.js';
 import { getDashboardStats } from '../services/streamService.js';
-import { startSRTIngest, stopSRTProcesses } from '../server.js';
+import { stopSRTProcesses } from '../server.js';
 
 const createKeySchema = z.object({
   key: z.string().min(3).max(64).regex(/^[a-zA-Z0-9_-]+$/),
@@ -32,9 +32,9 @@ export const getStreams = async (_req: Request, res: Response): Promise<void> =>
     createdAt: stream.createdAt,
     username: stream.user.username,
     latestStatus: stream.streams[0]?.isLive ?? false,
-    rtmpUrl: `rtmp://${env.BASE_DOMAIN}/live/${stream.key}`,
-    srtUrl: `srt://${env.BASE_DOMAIN}:${env.SRT_PORT}?streamid=${stream.key}`,
-    srtPlaybackUrl: `srt://${env.BASE_DOMAIN}:${env.SRT_PORT + 1}?streamid=${stream.key}`,
+    rtmpUrl: `rtmp://${env.BASE_DOMAIN}:${env.RTMP_PORT}/live/${stream.key}`,
+    srtIngestUrl: `srt://${env.BASE_DOMAIN}:${env.SRT_PORT}?streamid=#!::r=live/${stream.key},m=publish&latency=3000000`,
+    srtPlaybackUrl: `srt://${env.BASE_DOMAIN}:${env.SRT_PORT + 1}?streamid=${stream.key}&latency=3000000&mode=caller`,
     hlsUrl: `http://${env.BASE_DOMAIN}:${env.HLS_PORT}/live/${stream.key}/index.m3u8`
   }));
 
@@ -55,9 +55,6 @@ export const createStreamKey = async (req: Request, res: Response): Promise<void
       userId: req.user.id
     }
   });
-
-  // Automatically start SRT ingest listener for the new key
-  startSRTIngest(created.key);
 
   res.status(StatusCodes.CREATED).json(created);
 };
@@ -87,9 +84,7 @@ export const patchStreamKey = async (req: Request, res: Response): Promise<void>
     data: { isActive: parsed.data.isActive }
   });
 
-  if (updated.isActive) {
-    startSRTIngest(updated.key);
-  } else {
+  if (!updated.isActive) {
     stopSRTProcesses(updated.key);
   }
 
@@ -131,6 +126,9 @@ export const getStreamStatus = async (req: Request, res: Response): Promise<void
     streamKey,
     isActive: found.isActive,
     isLive: found.streams[0]?.isLive ?? false,
+    rtmpUrl: `rtmp://${env.BASE_DOMAIN}:${env.RTMP_PORT}/live/${streamKey}`,
+    srtIngestUrl: `srt://${env.BASE_DOMAIN}:${env.SRT_PORT}?streamid=#!::r=live/${streamKey},m=publish&latency=3000000`,
+    srtPlaybackUrl: `srt://${env.BASE_DOMAIN}:${env.SRT_PORT + 1}?streamid=${streamKey}&latency=3000000&mode=caller`,
     hlsUrl: `http://${env.BASE_DOMAIN}:${env.HLS_PORT}/live/${streamKey}/index.m3u8`
   });
 };
