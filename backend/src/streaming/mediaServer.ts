@@ -75,6 +75,17 @@ export const verifyHmacSignature = (req: Request, res: Response, next: () => voi
 };
 
 export class SrsHookHandler {
+  private readonly startSRTPlayback: (streamKey: string) => void;
+  private readonly stopSRTProcesses: (streamKey: string) => void;
+
+  constructor(
+    startSRTPlayback: (streamKey: string) => void,
+    stopSRTProcesses: (streamKey: string) => void,
+  ) {
+    this.startSRTPlayback = startSRTPlayback;
+    this.stopSRTProcesses = stopSRTProcesses;
+  }
+
   async onPublish(req: Request, res: Response): Promise<void> {
     const { stream } = req.body as { stream: string; app: string; tcUrl: string };
     const streamKey = stream;
@@ -93,6 +104,7 @@ export class SrsHookHandler {
         return;
       }
 
+      this.startSRTPlayback(streamKey);
       startThumbnailJob(streamKey);
 
       const record = await getOrCreateStreamRecord(key.id);
@@ -114,6 +126,7 @@ export class SrsHookHandler {
     const streamKey = stream;
 
     try {
+      this.stopSRTProcesses(streamKey);
       stopThumbnailJob(streamKey);
 
       const streamDir = path.join(process.cwd(), 'media', 'live', streamKey);
