@@ -10,7 +10,7 @@ type StreamKeyItem = {
   name: string;
   isActive: boolean;
   rtmpUrl: string;
-  srtUrl: string;
+  srtIngestUrl: string;
   srtPlaybackUrl: string;
 };
 
@@ -65,7 +65,7 @@ export const StreamsPage = () => {
   return (
     <PageShell>
       <div className="flex flex-col gap-2 mb-6">
-        <h1 className="text-3xl font-bold text-black">Stream Keys</h1>
+        <h1 className="text-2xl md:text-3xl font-bold text-black">Stream Keys</h1>
         <p className="text-black/60">Manage and create keys for your streaming sessions.</p>
       </div>
 
@@ -92,20 +92,29 @@ export const StreamsPage = () => {
           <Card className="text-center py-10 text-black/60">No stream keys found. Create one above to get started.</Card>
         ) : (
           items.map((item) => (
-            <Card key={item.id} className="flex flex-wrap items-center justify-between gap-4">
-              <div className="space-y-1">
-                <p className="font-bold text-black">{item.name}</p>
-                <code className="text-[11px] bg-vimeo-lightGray px-2 py-0.5 rounded text-black/60 font-mono">{item.key}</code>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 mr-2">
+            <Card key={item.id} className="flex flex-col gap-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1 min-w-0">
+                  <p className="font-bold text-black truncate">{item.name}</p>
+                  <code className="text-[11px] bg-vimeo-lightGray px-2 py-0.5 rounded text-black/60 font-mono break-all">{item.key}</code>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
                   <span className={cn("h-2 w-2 rounded-full", item.isActive ? "bg-emerald-500" : "bg-black/20")} />
                   <span className={cn("text-xs font-bold", item.isActive ? 'text-emerald-600' : 'text-black/40')}>
                     {item.isActive ? 'ACTIVE' : 'DISABLED'}
                   </span>
+                  <button
+                    onClick={() => onDelete(item.id)}
+                    className="p-2 text-black/40 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors ml-1"
+                    title="Delete Key"
+                  >
+                    <Trash2 size={18} />
+                  </button>
                 </div>
-                <Button 
-                  onClick={() => onCopy(item.id + '-rtmp', item.rtmpUrl)} 
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() => onCopy(item.id + '-rtmp', item.rtmpUrl)}
                   className={cn(
                     "flex items-center gap-2 bg-vimeo-lightGray text-black hover:bg-vimeo-border border border-vimeo-border shadow-none transition-all duration-200",
                     copiedId === item.id + '-rtmp' && "bg-emerald-50 border-emerald-200 text-emerald-600"
@@ -114,8 +123,8 @@ export const StreamsPage = () => {
                   {copiedId === item.id + '-rtmp' ? <Check size={14} /> : <Copy size={14} />}
                   <span className="text-xs">{copiedId === item.id + '-rtmp' ? 'Copied RTMP!' : 'Copy RTMP'}</span>
                 </Button>
-                <Button 
-                  onClick={() => onCopy(item.id + '-srt', item.srtUrl)} 
+                <Button
+                  onClick={() => onCopy(item.id + '-srt', item.srtIngestUrl)}
                   className={cn(
                     "flex items-center gap-2 bg-vimeo-lightGray text-black hover:bg-vimeo-border border border-vimeo-border shadow-none transition-all duration-200",
                     copiedId === item.id + '-srt' && "bg-emerald-50 border-emerald-200 text-emerald-600"
@@ -124,8 +133,8 @@ export const StreamsPage = () => {
                   {copiedId === item.id + '-srt' ? <Check size={14} /> : <Copy size={14} />}
                   <span className="text-xs">{copiedId === item.id + '-srt' ? 'Copied SRT Ingest!' : 'Copy SRT Ingest'}</span>
                 </Button>
-                <Button 
-                  onClick={() => onCopy(item.id + '-srt-play', item.srtPlaybackUrl)} 
+                <Button
+                  onClick={() => onCopy(item.id + '-srt-play', item.srtPlaybackUrl)}
                   className={cn(
                     "flex items-center gap-2 bg-vimeo-lightGray text-black hover:bg-vimeo-border border border-vimeo-border shadow-none transition-all duration-200",
                     copiedId === item.id + '-srt-play' && "bg-emerald-50 border-emerald-200 text-emerald-600"
@@ -134,13 +143,6 @@ export const StreamsPage = () => {
                   {copiedId === item.id + '-srt-play' ? <Check size={14} /> : <Copy size={14} />}
                   <span className="text-xs">{copiedId === item.id + '-srt-play' ? 'Copied SRT Playback!' : 'Copy SRT Playback'}</span>
                 </Button>
-                <button 
-                  onClick={() => onDelete(item.id)}
-                  className="p-2 text-black/40 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                  title="Delete Key"
-                >
-                  <Trash2 size={18} />
-                </button>
               </div>
             </Card>
           ))
