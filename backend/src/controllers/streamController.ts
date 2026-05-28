@@ -33,7 +33,7 @@ export const getStreams = async (_req: Request, res: Response): Promise<void> =>
     latestStatus: stream.streams[0]?.isLive ?? false,
     rtmpUrl: `rtmp://${env.BASE_DOMAIN}:${env.RTMP_PORT}/live/${stream.key}`,
     srtIngestUrl: `srt://${env.BASE_DOMAIN}:${env.SRT_PORT}?streamid=#!::r=live/${stream.key},m=publish&latency=120`,
-    srtPlaybackUrl: `srt://${env.BASE_DOMAIN}:${env.SRT_PORT}?streamid=#!::r=live/${stream.key},m=play&latency=120`,
+    srtPlaybackUrl: `srt://${env.BASE_DOMAIN}:${env.SRT_PORT}?streamid=#!::r=live/${stream.key},m=request&latency=120`,
     hlsUrl: `http://${env.BASE_DOMAIN}:${env.HLS_PORT}/live/${stream.key}/index.m3u8`
   }));
 
@@ -118,7 +118,7 @@ export const getStreamStatus = async (req: Request, res: Response): Promise<void
     isLive: found.streams[0]?.isLive ?? false,
     rtmpUrl: `rtmp://${env.BASE_DOMAIN}:${env.RTMP_PORT}/live/${streamKey}`,
     srtIngestUrl: `srt://${env.BASE_DOMAIN}:${env.SRT_PORT}?streamid=#!::r=live/${streamKey},m=publish&latency=120`,
-    srtPlaybackUrl: `srt://${env.BASE_DOMAIN}:${env.SRT_PORT}?streamid=#!::r=live/${streamKey},m=play&latency=120`,
+    srtPlaybackUrl: `srt://${env.BASE_DOMAIN}:${env.SRT_PORT}?streamid=#!::r=live/${streamKey},m=request&latency=120`,
     hlsUrl: `http://${env.BASE_DOMAIN}:${env.HLS_PORT}/live/${streamKey}/index.m3u8`
   });
 };
