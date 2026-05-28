@@ -1,0 +1,16 @@
+#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-MEDIA-SEQUENCE:400
+#EXT-X-TARGETDURATION:4
+#EXTINF:4.000, no desc
+400.ts
+#EXTINF:4.000, no desc
+401.ts
+#EXTINF:4.000, no desc
+402.ts
+#EXTINF:4.000, no desc
+403.ts
+#EXTINF:4.000, no desc
+404.ts
+#EXTINF:4.000, no desc
+405.ts

@@ -22,7 +22,6 @@ const envSchema = z.object({
   MAX_BITRATE_KBPS: z.coerce.number().default(8000),
   MIN_BITRATE_WARNING_KBPS: z.coerce.number().default(500),
   MIN_DISK_GB: z.coerce.number().default(2),
-  SRT_PLAYBACK_BASE_PORT: z.coerce.number().default(9001),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { prisma } from '../config/prisma.js';
 import { env } from '../config/env.js';
 import { getDashboardStats } from '../services/streamService.js';
-import { stopSRTProcesses } from '../server.js';
 
 const createKeySchema = z.object({
   key: z.string().min(3).max(64).regex(/^[a-zA-Z0-9_-]+$/),
@@ -33,8 +32,8 @@ export const getStreams = async (_req: Request, res: Response): Promise<void> =>
     username: stream.user.username,
     latestStatus: stream.streams[0]?.isLive ?? false,
     rtmpUrl: `rtmp://${env.BASE_DOMAIN}:${env.RTMP_PORT}/live/${stream.key}`,
-    srtIngestUrl: `srt://${env.BASE_DOMAIN}:${env.SRT_PORT}?streamid=#!::r=live/${stream.key},m=publish&latency=3000000`,
-    srtPlaybackUrl: `srt://${env.BASE_DOMAIN}:${env.SRT_PORT + 1}?streamid=${stream.key}&latency=3000000&mode=caller`,
+    srtIngestUrl: `srt://${env.BASE_DOMAIN}:${env.SRT_PORT}?streamid=#!::r=live/${stream.key},m=publish&latency=120`,
+    srtPlaybackUrl: `srt://${env.BASE_DOMAIN}:${env.SRT_PORT}?streamid=#!::r=live/${stream.key},m=play&latency=120`,
     hlsUrl: `http://${env.BASE_DOMAIN}:${env.HLS_PORT}/live/${stream.key}/index.m3u8`
   }));
 
@@ -62,11 +61,6 @@ export const createStreamKey = async (req: Request, res: Response): Promise<void
 export const deleteStreamKey = async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
   
-  const keyToDelete = await prisma.streamKey.findUnique({ where: { id } });
-  if (keyToDelete) {
-    stopSRTProcesses(keyToDelete.key);
-  }
-
   await prisma.streamKey.delete({ where: { id } });
   res.status(StatusCodes.NO_CONTENT).send();
 };
@@ -83,10 +77,6 @@ export const patchStreamKey = async (req: Request, res: Response): Promise<void>
     where: { id },
     data: { isActive: parsed.data.isActive }
   });
-
-  if (!updated.isActive) {
-    stopSRTProcesses(updated.key);
-  }
 
   res.status(StatusCodes.OK).json(updated);
 };
@@ -127,8 +117,8 @@ export const getStreamStatus = async (req: Request, res: Response): Promise<void
     isActive: found.isActive,
     isLive: found.streams[0]?.isLive ?? false,
     rtmpUrl: `rtmp://${env.BASE_DOMAIN}:${env.RTMP_PORT}/live/${streamKey}`,
-    srtIngestUrl: `srt://${env.BASE_DOMAIN}:${env.SRT_PORT}?streamid=#!::r=live/${streamKey},m=publish&latency=3000000`,
-    srtPlaybackUrl: `srt://${env.BASE_DOMAIN}:${env.SRT_PORT + 1}?streamid=${streamKey}&latency=3000000&mode=caller`,
+    srtIngestUrl: `srt://${env.BASE_DOMAIN}:${env.SRT_PORT}?streamid=#!::r=live/${streamKey},m=publish&latency=120`,
+    srtPlaybackUrl: `srt://${env.BASE_DOMAIN}:${env.SRT_PORT}?streamid=#!::r=live/${streamKey},m=play&latency=120`,
     hlsUrl: `http://${env.BASE_DOMAIN}:${env.HLS_PORT}/live/${streamKey}/index.m3u8`
   });
 };

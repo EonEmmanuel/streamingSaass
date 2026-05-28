@@ -7,8 +7,7 @@ services:
       - "1935:1935"
       - "8000:8000"
       - "1985:1985"
-      - "9000:9000/udp"
-      - "9001:9001/udp" # SRT playback port
+      - "9000:9000/udp"   # SRS SRT ingest + playback (single port, all stream keys)
     volumes:
       - ./srs.dev.conf:/usr/local/srs/conf/srs.conf
       - ./media:/usr/local/srs/objs/nginx/html/media

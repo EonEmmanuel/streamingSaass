@@ -55,7 +55,7 @@ model Domain {
 model StreamMetrics {
   id        String   @id @default(cuid())
   streamId  String
-  stream    Stream   @relation(fields: [streamId], references: [id])
+  stream    Stream   @relation(fields: [streamId], references: [id], onDelete: Cascade)
   timestamp DateTime @default(now())
   bitrate   Int
   fps       Float
